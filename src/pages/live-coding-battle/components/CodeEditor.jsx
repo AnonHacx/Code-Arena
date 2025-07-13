@@ -1,6 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
+import { useNavigate } from 'react-router-dom';
+
 
 const CodeEditor = ({ 
   code, 
@@ -8,12 +10,14 @@ const CodeEditor = ({
   onSubmit, 
   isSubmitting, 
   executionResults,
-  onFileUpload 
+  onFileUpload,
+  roomData  // Just receive this prop
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+  const navigate = useNavigate();
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -261,13 +265,13 @@ if __name__ == "__main__":
           variant="default"
           onClick={onSubmit}
           loading={isSubmitting}
-          disabled={!code.trim() || isSubmitting}
+          disabled={!code.trim() || isSubmitting || roomData?.status === 'completed'}
           iconName="Play"
           iconPosition="left"
           fullWidth
           className="font-medium"
         >
-          {isSubmitting ? 'Executing...' : 'Submit Solution'}
+          {isSubmitting ? 'Executing...' : roomData?.status === 'completed' ? 'Game Over' : 'Submit Solution'}
         </Button>
       </div>
     </div>

@@ -212,6 +212,8 @@ const LiveCodingBattle = () => {
 
   // Update competition status
   const updateCompetitionStatus = (room) => {
+    console.log('updateCompetitionStatus called with room:', room);
+    
     if (room.status === 'active' && room.started_at) {
       const startTime = new Date(room.started_at).getTime();
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -222,6 +224,18 @@ const LiveCodingBattle = () => {
         timeRemaining: remaining,
         winner: room.winner_id,
         finalTime: room.completed_at ? elapsed : null
+      });
+    } else if (room.status === 'completed' && room.winner_id) {
+      // Game is completed, set the winner
+      const startTime = new Date(room.started_at).getTime();
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      
+      console.log('Setting competition status for completed room. Winner:', room.winner_id);
+      setCompetitionStatus({
+        isActive: false,
+        timeRemaining: 0,
+        winner: room.winner_id,
+        finalTime: elapsed
       });
     } else if (room.status === 'waiting') {
       setCompetitionStatus({
@@ -318,16 +332,54 @@ const LiveCodingBattle = () => {
   // Set up real-time room subscription
   const setupRoomSubscription = (roomId) => {
     const channel = roomService.subscribeToRoom(roomId, async (payload) => {
-      // Handle real-time updates
+      console.log('Real-time update:', payload);
+      console.log('Payload table:', payload.table, 'Event:', payload.eventType);
+      console.log('New data:', payload.new);
+      console.log('Old data:', payload.old);
+      
       if (payload.table === 'rooms') {
-        setRoomData(prev => ({ ...prev, ...payload.new }));
-        updateCompetitionStatus({ ...roomData, ...payload.new });
+        console.log('Room status changed to:', payload.new.status);
+        
+        // Update room data
+        const updatedRoomData = { ...roomData, ...payload.new };
+        setRoomData(updatedRoomData);
+        updateCompetitionStatus(updatedRoomData);
+        
+        // If room just became active, load the challenge
+        if (payload.new.status === 'active' && roomData?.status === 'waiting') {
+          console.log('Room became active, loading challenge...');
+          await setupRoomChallenge(payload.new);
+        }
+        
+        // If room is completed, update opponent data to show final status
+        if (payload.new.status === 'completed') {
+          console.log('Room completed, updating opponent data...');
+          setupOpponentData(updatedRoomData);
+        }
       } else if (payload.table === 'room_participants') {
-        // Refresh room data to get updated participants
-        const roomResult = await roomService.getRoomDetails(roomId);
-        if (roomResult.success) {
-          setRoomData(roomResult.data);
-          setupOpponentData(roomResult.data);
+        // Check if someone completed the challenge
+        if (payload.new.status === 'completed' && payload.new.tests_passed === payload.new.total_tests) {
+          console.log('Someone completed the challenge!');
+          // Someone won! Update the room status
+          await roomService.completeBattle(roomId, payload.new.user_id);
+          
+          // Wait a moment for the database update to propagate
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Refresh room data to get the updated winner info
+          const roomResult = await roomService.getRoomDetails(roomId);
+          if (roomResult.success) {
+            console.log('Room data after completion:', roomResult.data);
+            setRoomData(roomResult.data);
+            updateCompetitionStatus(roomResult.data);
+          }
+        } else {
+          // Refresh room data to get updated participants
+          const roomResult = await roomService.getRoomDetails(roomId);
+          if (roomResult.success) {
+            setRoomData(roomResult.data);
+            setupOpponentData(roomResult.data);
+          }
         }
       }
     });
@@ -397,6 +449,32 @@ const LiveCodingBattle = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomData?.status]);
 
+  // Update opponent data when room is completed
+  useEffect(() => {
+    if (roomData?.status === 'completed') {
+      console.log('Room completed, updating opponent data...');
+      setupOpponentData(roomData);
+      
+      // Always update competition status when room is completed
+      console.log('Updating competition status for completed room:', roomData);
+      updateCompetitionStatus(roomData);
+    }
+  }, [roomData?.status, roomData?.winner_id]);
+
+  // Navigate to lobby when game is completed
+  useEffect(() => {
+    if (roomData?.status === 'completed') {
+      console.log('Game completed, redirecting to lobby in 5 seconds...');
+      
+      // Show victory/defeat screen for a few seconds, then redirect
+      const timer = setTimeout(() => {
+        navigate('/room-creation-join');
+      }, 5000); // 5 seconds delay
+
+      return () => clearTimeout(timer);
+    }
+  }, [roomData?.status, navigate]);
+
   // Cleanup subscription on unmount
   useEffect(() => {
     return () => {
@@ -407,8 +485,8 @@ const LiveCodingBattle = () => {
   }, [roomChannel]);
 
   const handleCodeSubmission = async () => {
-    if (!code.trim() || !challenge) return;
-
+    if (isSubmitting || !code.trim() || !challenge) return;
+    
     setIsSubmitting(true);
     
     try {
@@ -450,7 +528,7 @@ const LiveCodingBattle = () => {
           if (results.success) {
             setCompetitionStatus(prev => ({
               ...prev,
-              winner: user?.id,
+              winner: user?.id,  // This should be the current user's ID
               finalTime: 900 - prev.timeRemaining,
               isActive: false
             }));
@@ -531,6 +609,8 @@ const LiveCodingBattle = () => {
     );
   }
 
+  const isGameCompleted = roomData?.status === 'completed';
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -574,6 +654,7 @@ const LiveCodingBattle = () => {
             competitionStatus={competitionStatus}
             userStats={userStats}
             onRestartRequest={handleRestartRequest}
+            currentUserId={user?.id}
           />
         </div>
 
@@ -588,6 +669,7 @@ const LiveCodingBattle = () => {
                   competitionStatus={competitionStatus}
                   userStats={userStats}
                   onRestartRequest={handleRestartRequest}
+                  currentUserId={user?.id}
                 />
               </div>
 
@@ -600,6 +682,7 @@ const LiveCodingBattle = () => {
                   isSubmitting={isSubmitting}
                   executionResults={executionResults}
                   onFileUpload={handleFileUpload}
+                  roomData={roomData}
                 />
               </div>
             </div>

@@ -4,7 +4,8 @@ import Icon from '../../../components/AppIcon';
 const CompetitionStatus = ({ 
   competitionStatus, 
   userStats, 
-  onRestartRequest 
+  onRestartRequest,
+  currentUserId 
 }) => {
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -19,7 +20,8 @@ const CompetitionStatus = ({
   };
 
   if (competitionStatus.winner) {
-    const isWinner = competitionStatus.winner === 'user';
+    const isWinner = competitionStatus.winner === 'user' || competitionStatus.winner === currentUserId;
+    console.log('CompetitionStatus - winner:', competitionStatus.winner, 'currentUserId:', currentUserId, 'isWinner:', isWinner);
     
     return (
       <div className={`

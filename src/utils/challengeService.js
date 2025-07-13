@@ -118,12 +118,19 @@ class ChallengeService {
 
     let passedCount = 0;
 
-    for (const testCase of testCases) {
+    for (let i = 0; i < testCases.length; i++) {
+      const testCase = testCases[i];
+      
+      // Add delay between requests (except for the first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 250)); // 250ms delay
+      }
+
       const payload = {
         language: "python3",
         version: "3.10.0",
         files: [{ name: "solution.py", content: code }],
-        stdin: testCase.input
+        stdin: String(testCase.input)  // Convert to string
       };
 
       try {
@@ -135,9 +142,15 @@ class ChallengeService {
         const data = await response.json();
 
         const actual = data.run?.output?.trim();
-        const expected = (typeof testCase.expected === "string" ? testCase.expected.trim() : testCase.expected);
+        const expected = testCase.expected;
 
-        const passed = actual === expected;
+        // Convert string output to boolean for comparison
+        let actualBool;
+        if (actual === "True") actualBool = true;
+        else if (actual === "False") actualBool = false;
+        else actualBool = actual; // fallback
+
+        const passed = actualBool === expected;
         if (passed) passedCount++;
 
         results.testCases.push({
