@@ -89,7 +89,6 @@ class ChallengeService {
   // Execute code against test cases
   async executeCode(challengeId, code, language = 'python') {
     try {
-      // Get challenge test cases
       const challengeResult = await this.getChallengeById(challengeId);
       if (!challengeResult.success) {
         return challengeResult;
@@ -98,96 +97,71 @@ class ChallengeService {
       const challenge = challengeResult.data;
       const testCases = challenge.test_cases || [];
 
-      // Simulate code execution (replace with actual execution service)
-      const results = await this.simulateCodeExecution(code, testCases, challenge);
+      // Use Piston for real execution
+      const results = await this.executePythonWithPiston(code, testCases);
 
-      return { success: true, data: results };
+      return results;
     } catch (error) {
       return { success: false, error: 'Failed to execute code' };
     }
   }
 
-  // Simulate code execution (replace with actual code execution service)
-  async simulateCodeExecution(code, testCases, challenge) {
-    // Simulate execution delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-
+  async executePythonWithPiston(code, testCases) {
     const results = {
       success: false,
-      executionTime: Math.floor(Math.random() * 500) + 100,
+      executionTime: 0,
       testCases: [],
       error: null,
       totalPassed: 0,
       totalTests: testCases.length
     };
 
-    // Basic code validation
-    if (!code.trim()) {
-      results.error = "Code is empty";
-      return results;
-    }
-
-    if (!code.includes('def ')) {
-      results.error = "Function definition not found";
-      return results;
-    }
-
-    // Extract function name from challenge signature
-    const functionName = challenge.function_signature?.split('(')[0]?.replace('def ', '')?.trim();
-    if (functionName && !code.includes(functionName)) {
-      results.error = `Function '${functionName}' not found in code`;
-      return results;
-    }
-
-    // Simulate test case execution
     let passedCount = 0;
-    results.testCases = testCases.map((testCase, index) => {
-      // Simulate different success rates based on code quality indicators
-      let successProbability = 0.3; // Base probability
 
-      // Improve probability based on code patterns
-      if (code.includes('return')) successProbability += 0.2;
-      if (code.includes('for ') || code.includes('while ')) successProbability += 0.15;
-      if (code.includes('if ')) successProbability += 0.1;
-      if (code.includes('len(')) successProbability += 0.1;
-      if (code.includes('range(')) successProbability += 0.1;
-      if (code.split('\n').length > 5) successProbability += 0.1; // Longer code might be more complete
-
-      // First test case has higher probability to encourage users
-      if (index === 0) successProbability += 0.2;
-
-      // Later test cases are harder
-      successProbability = Math.max(0.1, successProbability - (index * 0.1));
-
-      const passed = Math.random() < successProbability;
-      if (passed) passedCount++;
-
-      return {
-        passed,
-        input: testCase.input,
-        expected: testCase.expected,
-        actual: passed ? testCase.expected : this.generateIncorrectOutput(testCase.expected),
-        executionTime: Math.floor(Math.random() * 50) + 10
+    for (const testCase of testCases) {
+      const payload = {
+        language: "python3",
+        version: "3.10.0",
+        files: [{ name: "solution.py", content: code }],
+        stdin: testCase.input
       };
-    });
+
+      try {
+        const response = await fetch("https://emkc.org/api/v2/piston/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        const actual = data.run?.output?.trim();
+        const expected = (typeof testCase.expected === "string" ? testCase.expected.trim() : testCase.expected);
+
+        const passed = actual === expected;
+        if (passed) passedCount++;
+
+        results.testCases.push({
+          passed,
+          input: testCase.input,
+          expected: testCase.expected,
+          actual,
+          executionTime: data.run?.time || 0
+        });
+      } catch (err) {
+        results.testCases.push({
+          passed: false,
+          input: testCase.input,
+          expected: testCase.expected,
+          actual: "",
+          executionTime: 0,
+          error: err.message
+        });
+      }
+    }
 
     results.totalPassed = passedCount;
     results.success = passedCount === testCases.length;
-
-    // Add random errors for failed executions
-    if (!results.success && Math.random() < 0.3) {
-      const errors = [
-        "IndentationError: expected an indented block",
-        "NameError: name \'undefined_variable\' is not defined",
-        "TypeError: unsupported operand type(s)",
-        "IndexError: list index out of range",
-        "ValueError: invalid literal for int()",
-        "RecursionError: maximum recursion depth exceeded"
-      ];
-      results.error = errors[Math.floor(Math.random() * errors.length)];
-    }
-
-    return results;
+    return { success: true, data: results };
   }
 
   // Generate plausible incorrect output for failed test cases

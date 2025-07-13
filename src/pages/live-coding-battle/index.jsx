@@ -112,6 +112,7 @@ const LiveCodingBattle = () => {
 
   // Setup challenge for room
   const setupRoomChallenge = async (room) => {
+    if (room.status !== 'active') return; // Only load challenge if room is active
     // Get challenge
     if (room.challenge_id) {
       const challengeResult = await challengeService.getChallengeById(room.challenge_id);
@@ -131,6 +132,11 @@ const LiveCodingBattle = () => {
         // Update room with challenge
         if (user?.id === room.host_id) {
           await roomService.startBattle(room.id, challengeResult.data.id);
+          // Fetch updated room data
+          const updatedRoom = await roomService.getRoomDetails(room.id);
+          if (updatedRoom.success) {
+            setRoomData(updatedRoom.data);
+          }
         }
       }
     }
@@ -290,6 +296,38 @@ const LiveCodingBattle = () => {
       return () => clearInterval(interval);
     }
   }, [roomData?.use_demo_bot, roomData?.id, competitionStatus.isActive]);
+
+  // Start battle when room is full and you are the host
+  useEffect(() => {
+    if (
+      roomData &&
+      roomData.status === 'waiting' &&
+      roomData.participants?.length === roomData.max_participants &&
+      user?.id === roomData.host_id
+    ) {
+      // Host should start the battle
+      const start = async () => {
+        // Pick a challenge if not already assigned
+        let challengeId = roomData.challenge_id;
+        if (!challengeId) {
+          const challengeResult = await challengeService.getRandomChallenge();
+          if (challengeResult.success) {
+            challengeId = challengeResult.data.id;
+          }
+        }
+        await roomService.startBattle(roomData.id, challengeId);
+      };
+      start();
+    }
+  }, [roomData, user]);
+
+  // React to room status changes to load challenge
+  useEffect(() => {
+    if (roomData && roomData.status === 'active') {
+      setupRoomChallenge(roomData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomData?.status]);
 
   // Cleanup subscription on unmount
   useEffect(() => {
@@ -455,6 +493,12 @@ const LiveCodingBattle = () => {
             </div>
           </div>
         )}
+        {roomData && roomData.status === 'waiting' && (
+          <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-2 text-center">
+            <span className="font-mono font-bold">Room Code: {roomData.room_code}</span>
+            <span className="ml-4 text-muted-foreground">Share this code with your opponent to join!</span>
+          </div>
+        )}
 
         {/* Mobile Competition Status Bar */}
         <div className="lg:hidden p-4 border-b border-border bg-card">
@@ -513,7 +557,7 @@ const LiveCodingBattle = () => {
           </div>
 
           {/* Challenge Panel */}
-          {challenge && (
+          {challenge && roomData?.status === 'active' && (
             <ChallengePanel
               isVisible={challengePanelVisible}
               onToggle={() => setChallengePanelVisible(!challengePanelVisible)}

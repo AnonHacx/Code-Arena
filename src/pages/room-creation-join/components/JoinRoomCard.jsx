@@ -34,6 +34,14 @@ const JoinRoomCard = ({ onRoomJoined, isLoading }) => {
       
       if (result.success) {
         onRoomJoined(result.data);
+      } else if (result.error === 'You are already in this room') {
+        // Fetch room details by code and proceed
+        const roomDetails = await roomService.getRoomDetailsByCode(roomCode.trim());
+        if (roomDetails.success) {
+          onRoomJoined(roomDetails.data);
+        } else {
+          setError(roomDetails.error || 'Failed to load room details');
+        }
       } else {
         setError(result.error || 'Failed to join room');
       }

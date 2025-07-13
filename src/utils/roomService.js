@@ -364,6 +364,19 @@ class RoomService {
       return { success: false, error: 'Failed to get recent rooms' };
     }
   }
+
+  async getRoomDetailsByCode(roomCode) {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('room_code', roomCode)
+      .single();
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    // Optionally, fetch participants as well if needed
+    return { success: true, data };
+  }
 }
 
 export default new RoomService();

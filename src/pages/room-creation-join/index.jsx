@@ -48,10 +48,7 @@ const RoomCreationJoin = () => {
     setTimeout(() => {
       navigate('/live-coding-battle', { 
         state: { 
-          roomCode: roomData.room_code,
-          roomId: roomData.id,
-          isHost: true,
-          createdAt: roomData.created_at
+          roomData // pass the full room object!
         } 
       });
     }, 2000);
@@ -70,10 +67,7 @@ const RoomCreationJoin = () => {
       setTimeout(() => {
         navigate('/live-coding-battle', { 
           state: { 
-            roomCode: roomData.room_code,
-            roomId: roomData.id,
-            isHost: false,
-            joinedAt: new Date().toISOString()
+            roomData // pass the full room object!
           } 
         });
       }, 1500);
