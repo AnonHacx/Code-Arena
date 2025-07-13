@@ -36,12 +36,12 @@ class RoomService {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
         .insert({
-          room_code: roomCode, // This is TEXT, not UUID
-          host_id: user.id, // This is UUID from auth.users
-          challenge_id: challengeId, // This is UUID or null
+          room_code: roomCode,
+          host_id: user.id,
+          challenge_id: challengeId,
           use_demo_bot: useDemoBot,
-          demo_bot_id: demoBotId, // This is UUID or null
-          current_participants: useDemoBot ? 2 : 1 // Count demo bot as participant
+          demo_bot_id: demoBotId
+          // Do NOT set current_participants here!
         })
         .select()
         .single();
@@ -126,12 +126,6 @@ class RoomService {
         return { success: false, error: roomError.message };
       }
 
-      // Check if room is full (accounting for demo bot)
-      const actualMaxParticipants = roomData.use_demo_bot ? roomData.max_participants : roomData.max_participants;
-      if (roomData.current_participants >= actualMaxParticipants) {
-        return { success: false, error: 'Room is full' };
-      }
-
       // Check if user is already in room
       const { data: existingParticipant } = await supabase
         .from('room_participants')
@@ -142,6 +136,12 @@ class RoomService {
 
       if (existingParticipant) {
         return { success: false, error: 'You are already in this room' };
+      }
+
+      // Check if room is full (accounting for demo bot)
+      const actualMaxParticipants = roomData.use_demo_bot ? roomData.max_participants : roomData.max_participants;
+      if (roomData.current_participants >= actualMaxParticipants) {
+        return { success: false, error: 'Room is full' };
       }
 
       // Add user as participant
@@ -340,15 +340,15 @@ class RoomService {
       const { data, error } = await supabase
         .from('room_participants')
         .select(`
-          room:rooms(
+          rooms(
             id,
             room_code,
             status,
             created_at,
             completed_at,
             use_demo_bot,
-            challenge:challenges(title, difficulty),
-            winner:user_profiles!winner_id(username)
+            challenges(title, difficulty),
+            winner:user_profiles(username)
           )
         `)
         .eq('user_id', userId)
