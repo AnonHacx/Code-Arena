@@ -9,6 +9,74 @@ import CompetitionStatus from './components/CompetitionStatus';
 import roomService from '../../utils/roomService';
 import challengeService from '../../utils/challengeService';
 
+let pyodideReadyPromise = null;
+
+export async function loadPyodideIfNeeded() {
+  if (!window.pyodide) {
+    if (!pyodideReadyPromise) {
+      pyodideReadyPromise = window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+    }
+    await pyodideReadyPromise;
+  }
+  return window.pyodide;
+}
+
+export async function executePythonWithPyodide(code, testCases) {
+  const pyodide = await loadPyodideIfNeeded();
+  const results = {
+    success: false,
+    executionTime: 0,
+    testCases: [],
+    error: null,
+    totalPassed: 0,
+    totalTests: testCases.length
+  };
+
+  let passedCount = 0;
+
+  for (const testCase of testCases) {
+    try {
+      // Prepare code to read input and print output
+      const wrappedCode = `
+input_data = """${testCase.input.replace(/"/g, '\\"')}"""
+def input():
+    return input_data
+${code}
+`;
+      const start = performance.now();
+      const output = pyodide.runPython(wrappedCode);
+      const end = performance.now();
+
+      const actual = (output || "").toString().trim();
+      const expected = (typeof testCase.expected === "string" ? testCase.expected.trim() : testCase.expected);
+
+      const passed = actual === expected;
+      if (passed) passedCount++;
+
+      results.testCases.push({
+        passed,
+        input: testCase.input,
+        expected: testCase.expected,
+        actual,
+        executionTime: end - start
+      });
+    } catch (err) {
+      results.testCases.push({
+        passed: false,
+        input: testCase.input,
+        expected: testCase.expected,
+        actual: "",
+        executionTime: 0,
+        error: err.message
+      });
+    }
+  }
+
+  results.totalPassed = passedCount;
+  results.success = passedCount === testCases.length;
+  return { success: true, data: results };
+}
+
 const LiveCodingBattle = () => {
   const navigate = useNavigate();
   const location = useLocation();
